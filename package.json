@@ -1,7 +1,6 @@
 {
-  "name": "openshifttestassistant",
+  "name": "openshift-test-assistant",
   "version": "0.1.0",
-  "private": true,
   "author": "Red Hat, Inc.",
   "license": "Apache-2.0",
   "dependencies": {

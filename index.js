@@ -17,17 +17,17 @@ OpenshiftTestAssistant.prototype.deploy = function(config){
     let instance=this;
     return new Promise(function (fulfill, reject){
         nodeshift.deploy(config)
-            .then(output => { // on success
+        .then(output => { // on success
             instance.route = "http://" + output.appliedResources.find(val => val.kind === "Route").spec.host;
-        instance.waitForReady(instance.retryLimit)
+            instance.waitForReady(instance.retryLimit)
             .then(() => {
-            fulfill("");
-    }).catch(reason => {
+                fulfill("");
+            }).catch(reason => {
+                reject(reason);
+            });
+        }).catch(reason => { // on failure
             reject(reason);
-    });
-    }).catch(reason => { // on failure
-            reject(reason);
-    });
+        });
     });
 };
 
@@ -55,27 +55,27 @@ OpenshiftTestAssistant.prototype.waitForReady = function(remainingTries){
         request(instance.route)
             .get('')
             .then(response => {
-            if (response.status === 200) { // app ready
-            instance.ready = true;
-            fulfill("");
-        }
-    else if (remainingTries > 0) { // app not ready, try another time
-            setTimeout(function () {
-                instance.waitForReady(remainingTries - 1)
-                    .then(() => {
+                if (response.status === 200) { // app ready
+                    instance.ready = true;
                     fulfill("");
-            }).catch(reason => {
-                    reject(reason);
-            });
-            }, instance.retryInterval);
-        }
-        else { // app not ready, out of tries
-            reject("Timeout for app deploy");
-        }
-    })
-    .catch(reason => { // failed to connect
-            reject(reason);
-    })
+                }
+                else if (remainingTries > 0) { // app not ready, try another time
+                    setTimeout(function () {
+                        instance.waitForReady(remainingTries - 1)
+                        .then(() => {
+                            fulfill("");
+                        }).catch(reason => {
+                            reject(reason);
+                        });
+                    }, instance.retryInterval);
+                }
+                else { // app not ready, out of tries
+                    reject("Timeout for app deploy");
+                }
+            })
+            .catch(reason => { // failed to connect
+                reject(reason);
+            })
     });
 };
 
