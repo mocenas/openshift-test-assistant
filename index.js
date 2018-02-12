@@ -1,28 +1,41 @@
 const nodeshift = require('nodeshift');
 const request = require('supertest');
-
+const restClientFactory = require('./restClient');
+const path = require('path');
+const callsite = require('callsite');
 
 const retryLimit = Symbol('retryLimit');
 const retryInterval = Symbol('retryInterval');
 const ready = Symbol('ready');
-const route = Symbol('route');
 const config = Symbol('config');
+const restClient = Symbol('restClient');
+
+const route = Symbol('route');
+const namespace = Symbol('namespace');
+const applicationName =  Symbol('applicationName');
 
 /**
  * Helper do work with (un)deploying applications to openshift.
- * It's statefull, works with the application deployed with deploy() method
+ * It's stateful, works with the application deployed with deploy() method
  */
 class OpenshiftTestAssistant{
-
     /**
-     * @param configuration Deployment configuration
+     * @param configuration Deployment configuration, uses default if none provided
      */
     constructor(configuration){
         this[retryLimit] = 20;
         this[retryInterval] = 5000; // in milliseconds
         this[ready] = false;
         this[route] = '';
-        this[config] = configuration;
+        this[restClient] = null;
+        this[namespace] = '';
+        this[applicationName] = '';
+
+        // use custom config if provided, otherwise use default config
+        this[config] = configuration || {
+            'projectLocation': path.join(callsite()[1].getFileName(), '/../..'),
+            'strictSSL': false
+        };
     }
 
     /**
@@ -32,9 +45,10 @@ class OpenshiftTestAssistant{
     deploy() {
         const instance = this;
         return new Promise(function (resolve, reject) {
+            instance[ready] = false;
             nodeshift.deploy(instance[config])
                 .then(output => { // on success
-                    instance[route] = 'http://' + output.appliedResources.find(val => val.kind === 'Route').spec.host;
+                    parseDeploymentOutput(instance, output);
                     instance.waitForReady(instance[retryLimit])
                         .then(() => {
                             instance[ready] = true;
@@ -64,9 +78,28 @@ class OpenshiftTestAssistant{
         this[retryInterval] = value;
     }
 
+    async getRestClient (){
+        if (this[restClient] === null){
+            this[restClient] = await restClientFactory.getClient();
+        }
+        return this[restClient];
+    }
+
+    createRequest(){
+        return request(this.getRoute())
+    }
+
     getRoute () {
         return this[route];
     };
+
+    get namespace () {
+        return this[namespace];
+    }
+
+    get applicationName () {
+        return this[applicationName];
+    }
 
     isReady (){
         return this[ready];
@@ -109,6 +142,67 @@ class OpenshiftTestAssistant{
                 });
         });
     };
+
+    /**
+     * Change number of replicas for current deployment and wait for it to take effect
+     * @param replicas number of desired pod replicas
+     */
+    async scale (replicas) {
+        const instance=this;
+        const restClient = await this.getRestClient();
+        let deploymentConfig = await this.getDeploymentConfig();
+
+        // update number of replicas
+        deploymentConfig.spec.replicas = replicas;
+        await restClient.deploymentconfigs.update('nodejs-configmap', deploymentConfig);
+
+        // wait for update to take effect
+        let remainingTries = this[retryLimit];
+        return new Promise(async function (resolve, reject){
+            do {
+                if (--remainingTries === 0){
+                    reject(new Error('Retry timeout'));
+                }
+                await sleep(instance[retryInterval]);
+                deploymentConfig = await instance.getDeploymentConfig();
+            } while(deploymentConfig.status.availableReplicas !== replicas); // check available replicas field
+
+            // wait for pods to become ready
+            if (replicas > 0) {
+                await instance.waitForReady(instance[retryLimit]);
+            }
+            resolve();
+        });
+    }
+
+    /**
+     * Get current deployment config from openshift
+     * @returns deployment config
+     */
+    async getDeploymentConfig () {
+        const restClient = await this.getRestClient();
+        const deploymentConfigs= await restClient.deploymentconfigs.findAll();
+        return deploymentConfigs.items.
+            find(val => val.metadata.name === this[applicationName]
+                && val.metadata.namespace === this[namespace]);
+    }
+}
+
+/**
+ * Parse useful info from deployment output, store to the assistent's attributes
+ * @param instance OpenshiftTestAssistent to store the parse info to
+ * @param output Output from the deployment
+ */
+function parseDeploymentOutput (instance, output) {
+    instance[route] = 'http://' + output.appliedResources.find(val => val.kind === 'Route').spec.host;
+    instance[namespace] = output.appliedResources.find(val => val.kind === "DeploymentConfig").metadata.namespace;
+    instance[applicationName] = output.appliedResources.find(val => val.kind === "DeploymentConfig").metadata.name;
+}
+
+function sleep (ms) {
+    return new Promise(resolve => {
+        setTimeout(resolve, ms);
+    });
 }
 
 module.exports = OpenshiftTestAssistant;
