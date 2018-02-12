@@ -1,6 +1,6 @@
 const nodeshift = require('nodeshift');
 const request = require('supertest');
-const restClientFactory = require('./restClient');
+const restClientFactory = require('./app/restClient');
 const path = require('path');
 const callsite = require('callsite');
 
