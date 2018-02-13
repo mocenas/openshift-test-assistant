@@ -163,7 +163,7 @@ class OpenshiftTestAssistant{
                 if (--remainingTries === 0){
                     reject(new Error('Retry timeout'));
                 }
-                await sleep(instance[retryInterval]);
+                await instance.sleep(instance[retryInterval]);
                 deploymentConfig = await instance.getDeploymentConfig();
             } while(deploymentConfig.status.availableReplicas !== replicas); // check available replicas field
 
@@ -186,6 +186,42 @@ class OpenshiftTestAssistant{
             find(val => val.metadata.name === this[applicationName]
                 && val.metadata.namespace === this[namespace]);
     }
+
+    /**
+     * Wait for certain condition to become true
+     * waits for retryInterval * retryLimit until reject with timeout
+     *
+     * @param condition callback to function which defines the condition
+     *      return true if condition is met, false otherwise
+     * @returns {Promise<any>}
+     */
+    waitFor(condition) {
+        const instance = this;
+        let retryPeriod = instance[retryInterval];
+        let remainingTries = instance[retryLimit];
+        return new Promise(async (resolve, reject) => {
+            let result = await condition();
+            while(!result) {
+                if (remainingTries-- === 0 ) {
+                    reject(new Error('Timeout waiting for condition'))
+                }
+                await instance.sleep(retryPeriod);
+                result = await condition();
+            }
+            resolve();
+        });
+    }
+
+    /**
+     * Return promise that will resolve after given time
+     * @param ms What time to wait
+     * @returns {Promise<any>}
+     */
+    sleep (ms) {
+        return new Promise(resolve => {
+            setTimeout(resolve, ms);
+        });
+    }
 }
 
 /**
@@ -197,12 +233,6 @@ function parseDeploymentOutput (instance, output) {
     instance[route] = 'http://' + output.appliedResources.find(val => val.kind === 'Route').spec.host;
     instance[namespace] = output.appliedResources.find(val => val.kind === "DeploymentConfig").metadata.namespace;
     instance[applicationName] = output.appliedResources.find(val => val.kind === "DeploymentConfig").metadata.name;
-}
-
-function sleep (ms) {
-    return new Promise(resolve => {
-        setTimeout(resolve, ms);
-    });
 }
 
 module.exports = OpenshiftTestAssistant;
