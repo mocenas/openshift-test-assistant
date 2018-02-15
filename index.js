@@ -9,6 +9,7 @@ const retryInterval = Symbol('retryInterval');
 const ready = Symbol('ready');
 const config = Symbol('config');
 const restClient = Symbol('restClient');
+const readinessPath = Symbol('readinessPath');
 
 const route = Symbol('route');
 const namespace = Symbol('namespace');
@@ -30,6 +31,7 @@ class OpenshiftTestAssistant{
         this[restClient] = null;
         this[namespace] = '';
         this[applicationName] = '';
+        this[readinessPath] = '';
 
         // use custom config if provided, otherwise use default config
         this[config] = configuration || {
@@ -78,6 +80,14 @@ class OpenshiftTestAssistant{
         this[retryInterval] = value;
     }
 
+    set readinessPath (value) {
+        this[readinessPath] = value;
+    }
+
+    get readinessPath () {
+        return this[readinessPath];
+    }
+
     async getRestClient (){
         if (this[restClient] === null){
             this[restClient] = await restClientFactory.getClient();
@@ -120,7 +130,7 @@ class OpenshiftTestAssistant{
         const instance = this;
         return new Promise(function (resolve, reject) {
             request(instance[route])
-                .get('')
+                .get(instance[readinessPath])
                 .then(response => {
                     if (response.status === 200) { // app ready
                         resolve('');
