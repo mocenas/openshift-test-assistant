@@ -164,7 +164,7 @@ class OpenshiftTestAssistant{
 
         // update number of replicas
         deploymentConfig.spec.replicas = replicas;
-        await restClient.deploymentconfigs.update('nodejs-configmap', deploymentConfig);
+        await restClient.deploymentconfigs.update(instance[applicationName], deploymentConfig);
 
         // wait for update to take effect
         let remainingTries = this[retryLimit];
@@ -191,10 +191,7 @@ class OpenshiftTestAssistant{
      */
     async getDeploymentConfig () {
         const restClient = await this.getRestClient();
-        const deploymentConfigs= await restClient.deploymentconfigs.findAll();
-        return deploymentConfigs.items.
-            find(val => val.metadata.name === this[applicationName]
-                && val.metadata.namespace === this[namespace]);
+        return await restClient.deploymentconfigs.find(this[applicationName]);
     }
 
     /**
